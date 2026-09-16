@@ -1,0 +1,67 @@
+{
+  "macos_x64": {
+    "target_os": "macos",
+    "target_cpu": "x64",
+    "rust_target": "x86_64-apple-darwin"
+  },
+  "macos_arm64": {
+    "target_os": "macos",
+    "target_cpu": "arm64",
+    "rust_target": "aarch64-apple-darwin"
+  },
+  "ios_arm64": {
+    "target_os": "ios",
+    "target_cpu": "arm64",
+    "rust_target": "aarch64-apple-ios"
+  },
+  "ios_sim_arm64": {
+    "target_os": "ios",
+    "target_cpu": "arm64",
+    "rust_target": "aarch64-apple-ios-sim"
+  },
+  "ios_sim_x64": {
+    "target_os": "ios",
+    "target_cpu": "x64",
+    "rust_target": "x86_64-apple-ios"
+  },
+  "android_arm64": {
+    "target_os": "android",
+    "target_cpu": "arm64",
+    "rust_target": "aarch64-linux-android"
+  },
+  "android_arm": {
+    "target_os": "android",
+    "target_cpu": "arm",
+    "rust_target": "armv7-linux-androideabi"
+  },
+  "android_x64": {
+    "target_os": "android",
+    "target_cpu": "x64",
+    "rust_target": "x86_64-linux-android"
+  },
+  "android_x86": {
+    "target_os": "android",
+    "target_cpu": "x86",
+    "rust_target": "i686-linux-android"
+  },
+  "linux_x64": {
+    "target_os": "linux",
+    "target_cpu": "x64",
+    "rust_target": "x86_64-unknown-linux-gnu"
+  },
+  "linux_arm64": {
+    "target_os": "linux",
+    "target_cpu": "arm64",
+    "rust_target": "aarch64-unknown-linux-gnu"
+  },
+  "windows_x64": {
+    "target_os": "windows",
+    "target_cpu": "x64",
+    "rust_target": "x86_64-pc-windows-msvc"
+  },
+  "windows_arm64": {
+    "target_os": "windows",
+    "target_cpu": "arm64",
+    "rust_target": "aarch64-pc-windows-msvc"
+  }
+}

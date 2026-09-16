@@ -1,0 +1,23 @@
+[package]
+name = "fsrs_dart"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "fsrs_dart"
+crate-type = ["cdylib", "staticlib"]
+path = "lib.rs"
+
+[dependencies]
+fsrs = "6.6.2"
+
+[build-dependencies]
+cbindgen = "0.29.2"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
+
