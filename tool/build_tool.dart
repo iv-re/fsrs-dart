@@ -144,7 +144,7 @@ class BuildCommand extends Command<void> {
           'ndk',
           '-t',
           androidArch,
-          '-p',
+          '--platform',
           '21',
           'build',
           '--release',
@@ -154,6 +154,7 @@ class BuildCommand extends Command<void> {
         environment: {
           ...Platform.environment,
           'ANDROID_NDK_HOME': ndkPath,
+          'ANDROID_NDK_ROOT': ndkPath,
         },
       );
     } else {

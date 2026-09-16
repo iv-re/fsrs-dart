@@ -120,7 +120,9 @@ jobs:
 
       - name: Set Android NDK environment
         if: matrix.target_os == 'android'
-        run: echo "ANDROID_NDK_HOME=$ANDROID_NDK_LATEST_HOME" >> $GITHUB_ENV
+        run: |
+          echo "ANDROID_NDK_HOME=$ANDROID_NDK_LATEST_HOME" >> $GITHUB_ENV
+          echo "ANDROID_NDK_ROOT=$ANDROID_NDK_LATEST_HOME" >> $GITHUB_ENV
 
       - name: Install Linux dependencies (ARM64 cross-compile fallback)
         if: matrix.target_os == 'linux' && matrix.target_cpu == 'arm64' && runner.arch != 'ARM64'
