@@ -6,6 +6,9 @@
 #include <stdbool.h>
 
 
+/**
+ * Opaque handle for an FSRS model instance.
+ */
 typedef struct fsrs_FSRS fsrs_FSRS;
 
 typedef struct fsrs_FSRSReview {
@@ -14,12 +17,12 @@ typedef struct fsrs_FSRSReview {
 } fsrs_FSRSReview;
 
 typedef struct fsrs_FSRSItem {
-  struct fsrs_FSRSReview *reviews;
+  const struct fsrs_FSRSReview *reviews;
   size_t len;
 } fsrs_FSRSItem;
 
 typedef struct fsrs_FsrsItems {
-  struct fsrs_FSRSItem *items;
+  const struct fsrs_FSRSItem *items;
   size_t len;
 } fsrs_FsrsItems;
 
@@ -32,11 +35,6 @@ typedef struct fsrs_ModelEvaluation {
   float log_loss;
   float rmse_bins;
 } fsrs_ModelEvaluation;
-
-typedef struct fsrs_FsrsReviews {
-  struct fsrs_FSRSReview *reviews;
-  size_t len;
-} fsrs_FsrsReviews;
 
 typedef struct fsrs_ItemState {
   struct fsrs_MemoryState memory;
@@ -51,17 +49,20 @@ typedef struct fsrs_NextStates {
 } fsrs_NextStates;
 
 /**
- * Computes the parameters for a given train set.
+ * Computes optimized FSRS parameters for a given training set and writes them
+ * into `out_params`. Returns `true` on success, `false` on error or invalid inputs.
  *
  * # Safety
  *
- * The `fsrs` pointer must be a valid pointer to an FSRS instance.
- * The `train_set` pointer must be a valid pointer to an array of FSRSItem.
+ * - `train_set` must be a valid non-null pointer to an `FsrsItems` struct.
+ * - `out_params` must be a valid non-null pointer to a writable buffer of at least
+ *   `out_len` floats (`out_len >= fsrs_parameters_len()`).
  */
-float *fsrs_compute_parameters(const struct fsrs_FSRS *_fsrs,
-                               struct fsrs_FsrsItems *train_set,
-                               bool enable_short_term,
-                               int32_t num_relearning_steps);
+bool fsrs_compute_parameters(const struct fsrs_FsrsItems *train_set,
+                             bool enable_short_term,
+                             int32_t num_relearning_steps,
+                             float *out_params,
+                             size_t out_len);
 
 /**
  * Computes the retrievability (probability of recall between 0.0 and 1.0)
@@ -69,19 +70,34 @@ float *fsrs_compute_parameters(const struct fsrs_FSRS *_fsrs,
  *
  * # Safety
  *
- * The `memory_state` pointer must be a valid pointer to a MemoryState instance.
+ * If non-null, `memory_state` must be a valid pointer to a `MemoryState` instance.
  */
 float fsrs_current_retrievability(const struct fsrs_MemoryState *memory_state,
                                   float days_elapsed,
                                   float decay);
 
 /**
- * Returns the default decay parameter (FSRS6_DEFAULT_DECAY).
+ * Returns the decay parameter configured for this FSRS instance, or
+ * `FSRS6_DEFAULT_DECAY` if `fsrs` is null.
+ *
+ * # Safety
+ *
+ * If non-null, `fsrs` must be a valid pointer to an `FSRS` instance created by `fsrs_new`.
+ */
+float fsrs_decay(const struct fsrs_FSRS *fsrs);
+
+/**
+ * Returns the default decay parameter (`FSRS6_DEFAULT_DECAY`).
  */
 float fsrs_default_decay(void);
 
 /**
- * Copies the default FSRS parameters into the provided buffer (must be at least 21 floats).
+ * Copies the default FSRS parameters into the provided buffer.
+ *
+ * # Safety
+ *
+ * If non-null, `out_params` must be valid for writes of at least
+ * `fsrs_parameters_len()` contiguous `f32` values.
  */
 void fsrs_default_parameters(float *out_params);
 
@@ -90,12 +106,12 @@ void fsrs_default_parameters(float *out_params);
  *
  * # Safety
  *
- * The `fsrs` pointer must be a valid pointer to an FSRS instance.
- * The `train_set` pointer must be a valid pointer to an array of FSRSItem.
- * The `out_eval` pointer must be a valid pointer to a ModelEvaluation instance.
+ * - `fsrs` must be a valid non-null pointer to an `FSRS` instance.
+ * - `train_set` must be a valid non-null pointer to an `FsrsItems` struct.
+ * - `out_eval` must be a valid non-null pointer to a writable `ModelEvaluation` struct.
  */
 bool fsrs_evaluate(const struct fsrs_FSRS *fsrs,
-                   struct fsrs_FsrsItems *train_set,
+                   const struct fsrs_FsrsItems *train_set,
                    struct fsrs_ModelEvaluation *out_eval);
 
 /**
@@ -103,131 +119,40 @@ bool fsrs_evaluate(const struct fsrs_FSRS *fsrs,
  *
  * # Safety
  *
- * The `fsrs` pointer must be a valid pointer to an FSRS instance created by `fsrs_new`.
+ * If non-null, `fsrs` must be a valid pointer to an `FSRS` instance created by `fsrs_new`
+ * and must not be freed more than once.
  */
-void fsrs_free(const struct fsrs_FSRS *fsrs);
-
-/**
- * Frees the memory allocated for an FSRSItem instance.
- *
- * # Safety
- *
- * The `item` pointer must be a valid pointer to an FSRSItem instance created by `fsrs_item_new`.
- */
-void fsrs_item_free(struct fsrs_FSRSItem *item);
-
-/**
- * Creates a new FSRSItem instance.
- *
- * # Safety
- *
- * The `reviews` pointer must be a valid pointer to an array of FSRSReview.
- */
-struct fsrs_FSRSItem *fsrs_item_new(struct fsrs_FsrsReviews *reviews);
-
-/**
- * Frees the memory allocated for a MemoryState instance.
- *
- * # Safety
- *
- * The `memory_state` pointer must be a valid pointer to a MemoryState instance created by `fsrs_memory_state_new`.
- */
-void fsrs_memory_state_free(struct fsrs_MemoryState *memory_state);
-
-/**
- * Creates a new MemoryState instance.
- */
-struct fsrs_MemoryState *fsrs_memory_state_new(float stability, float difficulty);
+void fsrs_free(struct fsrs_FSRS *fsrs);
 
 /**
  * Creates a new FSRS instance. Returns NULL if parameters are invalid.
- */
-const struct fsrs_FSRS *fsrs_new(const float *parameters, size_t len);
-
-/**
- * Computes the next states for a card. Returns NULL if inputs are invalid.
  *
  * # Safety
  *
- * The `fsrs` pointer must be a valid pointer to an FSRS instance.
- * The `memory_state` pointer must be a valid pointer to a MemoryState instance (or NULL for a new card).
+ * If `parameters` is non-null and `len > 0`, `parameters` must be valid for reads
+ * of `len` contiguous `f32` values.
  */
-struct fsrs_NextStates *fsrs_next_states(const struct fsrs_FSRS *fsrs,
-                                         struct fsrs_MemoryState *memory_state,
-                                         float desired_retention,
-                                         uint32_t days_elapsed);
+struct fsrs_FSRS *fsrs_new(const float *parameters, size_t len);
 
 /**
- * Get the `again` state from NextStates.
+ * Computes the next states for a card and writes them into `out_states`.
+ * Returns `true` on success, `false` if inputs are invalid.
  *
  * # Safety
  *
- * The `next_states` pointer must be a valid pointer to a NextStates instance.
+ * - `fsrs` must be a valid non-null pointer to an `FSRS` instance.
+ * - `memory_state` must be a valid pointer to a `MemoryState` instance, or NULL for a new card.
+ * - `out_states` must be a valid non-null pointer to a writable `NextStates` struct.
  */
-struct fsrs_ItemState fsrs_next_states_again(const struct fsrs_NextStates *next_states);
-
-/**
- * Get the `easy` state from NextStates.
- *
- * # Safety
- *
- * The `next_states` pointer must be a valid pointer to a NextStates instance.
- */
-struct fsrs_ItemState fsrs_next_states_easy(const struct fsrs_NextStates *next_states);
-
-/**
- * Frees the memory allocated for a NextStates instance.
- *
- * # Safety
- *
- * The `next_states` pointer must be a valid pointer to a NextStates instance created by `fsrs_next_states`.
- */
-void fsrs_next_states_free(struct fsrs_NextStates *next_states);
-
-/**
- * Get the `good` state from NextStates.
- *
- * # Safety
- *
- * The `next_states` pointer must be a valid pointer to a NextStates instance.
- */
-struct fsrs_ItemState fsrs_next_states_good(const struct fsrs_NextStates *next_states);
-
-/**
- * Get the `hard` state from NextStates.
- *
- * # Safety
- *
- * The `next_states` pointer must be a valid pointer to a NextStates instance.
- */
-struct fsrs_ItemState fsrs_next_states_hard(const struct fsrs_NextStates *next_states);
-
-/**
- * Frees the memory allocated for the parameters.
- *
- * # Safety
- *
- * The `params` pointer must be a valid pointer to the parameters created by `fsrs_compute_parameters`.
- */
-void fsrs_parameters_free(float *params);
+bool fsrs_next_states(const struct fsrs_FSRS *fsrs,
+                      const struct fsrs_MemoryState *memory_state,
+                      float desired_retention,
+                      uint32_t days_elapsed,
+                      struct fsrs_NextStates *out_states);
 
 /**
  * Returns the number of default parameters in FSRS (21).
  */
 size_t fsrs_parameters_len(void);
-
-/**
- * Frees the memory allocated for an FSRSReview instance.
- *
- * # Safety
- *
- * The `review` pointer must be a valid pointer to an FSRSReview instance created by `fsrs_review_new`.
- */
-void fsrs_review_free(struct fsrs_FSRSReview *review);
-
-/**
- * Creates a new FSRSReview instance.
- */
-struct fsrs_FSRSReview *fsrs_review_new(uint32_t rating, uint32_t delta_t);
 
 #endif  /* _FSRS_DART_H */

@@ -1,7 +1,9 @@
 import 'package:fsrs_dart/src/card_state.dart';
 import 'package:fsrs_dart/src/memory_state.dart';
+import 'package:meta/meta.dart';
 
 /// Represents a flashcard tracked by the FSRS algorithm.
+@immutable
 final class const FsrsCard({
   /// The timestamp when this card is due for its next review.
   required final DateTime due,
@@ -75,6 +77,32 @@ final class const FsrsCard({
       lastReview: lastReview ? null : this.lastReview,
     );
   }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is FsrsCard &&
+          runtimeType == other.runtimeType &&
+          due == other.due &&
+          cardId == other.cardId &&
+          state == other.state &&
+          step == other.step &&
+          reps == other.reps &&
+          lapses == other.lapses &&
+          memoryState == other.memoryState &&
+          lastReview == other.lastReview;
+
+  @override
+  int get hashCode => Object.hash(
+    due,
+    cardId,
+    state,
+    step,
+    reps,
+    lapses,
+    memoryState,
+    lastReview,
+  );
 
   @override
   String toString() {

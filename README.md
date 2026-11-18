@@ -6,7 +6,7 @@ Free Spaced Repetition Scheduler (FSRS-6) for Dart.
 
 ```yaml
 dependencies:
-  fsrs_dart: ^0.1.0
+  fsrs_dart: ^0.2.0
 ```
 
 ## Quick Start

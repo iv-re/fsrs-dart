@@ -181,9 +181,7 @@ class BuildCommand extends Command<void> {
 
     // Copy built artifact to build_${config.name}/
     final libName = getLibName(config.targetOs);
-    final srcTargetDir = isAndroid
-        ? Directory('src/target/${config.rustTarget}/release')
-        : Directory('src/target/${config.rustTarget}/release');
+    final srcTargetDir = Directory('src/target/${config.rustTarget}/release');
 
     var builtFile = File(p.join(srcTargetDir.path, libName));
     if (!builtFile.existsSync()) {

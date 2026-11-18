@@ -61,14 +61,22 @@ final class const FsrsRescheduleResult({
   required final FsrsCard card,
 }) {
   @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is FsrsRescheduleResult &&
-          runtimeType == other.runtimeType &&
-          card == other.card;
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    if (other is! FsrsRescheduleResult || runtimeType != other.runtimeType) {
+      return false;
+    }
+    if (card != other.card || collections.length != other.collections.length) {
+      return false;
+    }
+    for (var i = 0; i < collections.length; i++) {
+      if (collections[i] != other.collections[i]) return false;
+    }
+    return true;
+  }
 
   @override
-  int get hashCode => card.hashCode;
+  int get hashCode => Object.hash(card, Object.hashAll(collections));
 
   @override
   String toString() =>

@@ -55,18 +55,23 @@ final class Fsrs implements Finalizable {
     }
 
     final fsrs = Fsrs._(ptr);
-    fsrs._scheduler = FsrsScheduler(
-      fsrs: fsrs,
-      desiredRetention: desiredRetention,
-      learningSteps: learningSteps,
-      relearningSteps: relearningSteps,
-      maximumInterval: maximumInterval,
-      enableShortTerm: enableShortTerm,
-      enableFuzz: enableFuzz,
-      random: random,
-    );
-
     _finalizer.attach(fsrs, ptr.cast(), detach: fsrs);
+    try {
+      fsrs._scheduler = FsrsScheduler(
+        fsrs: fsrs,
+        desiredRetention: desiredRetention,
+        learningSteps: learningSteps,
+        relearningSteps: relearningSteps,
+        maximumInterval: maximumInterval,
+        enableShortTerm: enableShortTerm,
+        enableFuzz: enableFuzz,
+        random: random,
+      );
+    } catch (_) {
+      fsrs.close();
+      rethrow;
+    }
+
     return fsrs;
   }
 
@@ -87,6 +92,12 @@ final class Fsrs implements Finalizable {
 
   /// Whether this FSRS instance has been closed.
   bool get isClosed => _isClosed;
+
+  /// The decay parameter configured for this FSRS model instance.
+  double get decay {
+    _checkClosed();
+    return fsrs_decay(_ptr);
+  }
 
   void _checkClosed() {
     if (_isClosed) {
@@ -145,8 +156,11 @@ final class Fsrs implements Finalizable {
 
     final reviewTime = (now ?? DateTime.now()).toUtc();
     final lastRev = card.lastReview;
-    final daysElapsed = lastRev != null
-        ? reviewTime.difference(lastRev).inDays.clamp(0, 100000).toDouble()
+    final elapsedMicroseconds = lastRev != null
+        ? reviewTime.difference(lastRev).inMicroseconds
+        : 0;
+    final daysElapsed = elapsedMicroseconds > 0
+        ? elapsedMicroseconds / Duration.microsecondsPerDay
         : 0.0;
 
     return currentRetrievability(
@@ -183,34 +197,43 @@ final class Fsrs implements Finalizable {
     int daysElapsed = 0,
   }) {
     _checkClosed();
+    if (daysElapsed < 0) {
+      throw ArgumentError.value(
+        daysElapsed,
+        'daysElapsed',
+        'must be non-negative',
+      );
+    }
 
-    final statesPtr = using((arena) {
+    return using((arena) {
       var memPtr = nullptr as Pointer<fsrs_MemoryState>;
       if (memoryState != null) {
         memPtr = arena<fsrs_MemoryState>()
           ..ref.stability = memoryState.stability
           ..ref.difficulty = memoryState.difficulty;
       }
-      return fsrs_next_states(_ptr, memPtr, desiredRetention, daysElapsed);
-    });
-
-    if (statesPtr == nullptr) {
-      throw FsrsException(
-        'Failed to compute next states (retention: $desiredRetention, '
-        'days: $daysElapsed).',
+      final outStates = arena<fsrs_NextStates>();
+      final ok = fsrs_next_states(
+        _ptr,
+        memPtr,
+        desiredRetention,
+        daysElapsed,
+        outStates,
       );
-    }
+      if (!ok) {
+        throw FsrsException(
+          'Failed to compute next states (retention: $desiredRetention, '
+          'days: $daysElapsed).',
+        );
+      }
 
-    try {
       return FsrsNextStates(
-        again: _convertItemState(statesPtr.ref.again),
-        hard: _convertItemState(statesPtr.ref.hard),
-        good: _convertItemState(statesPtr.ref.good),
-        easy: _convertItemState(statesPtr.ref.easy),
+        again: _convertItemState(outStates.ref.again),
+        hard: _convertItemState(outStates.ref.hard),
+        good: _convertItemState(outStates.ref.good),
+        easy: _convertItemState(outStates.ref.easy),
       );
-    } finally {
-      fsrs_next_states_free(statesPtr);
-    }
+    });
   }
 
   /// Computes the next state directly for a specific [rating].
@@ -229,14 +252,21 @@ final class Fsrs implements Finalizable {
 
   /// Computes the retrievability (probability of recall between 0.0 and 1.0).
   ///
-  /// Uses [decay] if provided, otherwise defaults to [defaultDecay].
+  /// Uses [decay] if provided, otherwise defaults to this model's [decay].
   double currentRetrievability({
     required FsrsMemoryState memoryState,
     required double daysElapsed,
     double? decay,
   }) {
     _checkClosed();
-    final d = decay ?? defaultDecay;
+    if (daysElapsed < 0 || !daysElapsed.isFinite) {
+      throw ArgumentError.value(
+        daysElapsed,
+        'daysElapsed',
+        'must be finite and non-negative',
+      );
+    }
+    final d = decay ?? this.decay;
 
     return using((arena) {
       final memPtr = arena<fsrs_MemoryState>()
@@ -276,25 +306,23 @@ final class Fsrs implements Finalizable {
 
     return using((arena) {
       final trainSetPtr = _marshalTrainSet(arena, trainSet);
+      final len = fsrs_parameters_len();
+      final outParams = arena<Float>(len);
 
-      final resPtr = fsrs_compute_parameters(
-        _ptr,
+      final ok = fsrs_compute_parameters(
         trainSetPtr,
         enableShortTerm,
         numRelearningSteps ?? -1,
+        outParams,
+        len,
       );
-      if (resPtr == nullptr) {
+      if (!ok) {
         throw const FsrsException(
           'Failed to compute parameters from training set.',
         );
       }
 
-      try {
-        final len = fsrs_parameters_len();
-        return List<double>.generate(len, (i) => resPtr[i]);
-      } finally {
-        fsrs_parameters_free(resPtr);
-      }
+      return List<double>.generate(len, (i) => outParams[i]);
     });
   }
 
@@ -353,10 +381,31 @@ final class Fsrs implements Finalizable {
 
     for (var i = 0; i < trainSet.length; i++) {
       final item = trainSet[i];
+      if (item.reviews.isEmpty) {
+        itemsPtr[i]
+          ..reviews = nullptr
+          ..len = 0;
+        continue;
+      }
+
       final reviewsPtr = arena<fsrs_FSRSReview>(item.reviews.length);
 
       for (var j = 0; j < item.reviews.length; j++) {
         final review = item.reviews[j];
+        if (!review.rating.isGrade) {
+          throw ArgumentError.value(
+            review.rating,
+            'rating',
+            'Training reviews must use an active review grade.',
+          );
+        }
+        if (review.deltaT < 0) {
+          throw ArgumentError.value(
+            review.deltaT,
+            'deltaT',
+            'must be non-negative',
+          );
+        }
         reviewsPtr[j]
           ..rating = review.rating.value
           ..delta_t = review.deltaT;

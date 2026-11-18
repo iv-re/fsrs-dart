@@ -86,7 +86,7 @@ class FsrsScheduler {
     FsrsCard card, {
     DateTime? reviewDate,
   }) {
-    final reviewedAt = (reviewDate ?? DateTime.now().toUtc()).toUtc();
+    final reviewedAt = (reviewDate ?? DateTime.now()).toUtc();
     final daysElapsed = _daysElapsed(card, reviewedAt);
     final nextStates = fsrs.nextStates(
       memoryState: card.memoryState,
@@ -120,18 +120,35 @@ class FsrsScheduler {
         'Cannot review a manual rating.',
       );
     }
-    return preview(card, reviewDate: reviewDate)[rating]!;
+    final reviewedAt = (reviewDate ?? DateTime.now()).toUtc();
+    final daysElapsed = _daysElapsed(card, reviewedAt);
+    final itemState = fsrs.nextState(
+      rating: rating,
+      memoryState: card.memoryState,
+      desiredRetention: desiredRetention,
+      daysElapsed: daysElapsed,
+    );
+    return _scheduleRating(
+      card: card,
+      rating: rating,
+      reviewedAt: reviewedAt,
+      itemState: itemState,
+      daysElapsed: daysElapsed,
+    );
   }
 
   /// Reverts a review given the card and the corresponding [log].
   FsrsCard rollback(FsrsCard card, FsrsReviewLog log) {
     final isNew = log.state == FsrsCardState.newCard;
+    final isManual = log.rating == FsrsRating.manual;
     final lapseDecreased =
         card.lapses > 0 &&
         log.rating == FsrsRating.again &&
         log.state == FsrsCardState.review;
 
-    final updatedReps = (card.reps - 1).clamp(0, 1000000);
+    final updatedReps = isManual
+        ? card.reps
+        : (card.reps - 1).clamp(0, card.reps);
     final updatedLapses = lapseDecreased ? card.lapses - 1 : card.lapses;
 
     if (isNew) {
@@ -146,13 +163,27 @@ class FsrsScheduler {
           );
     }
 
-    return card.copyWith(
-      due: log.due,
-      state: log.state,
-      step: card.step,
-      reps: updatedReps,
-      lapses: updatedLapses,
-    );
+    final restoredMemory = log.stability > 0 && log.difficulty > 0
+        ? FsrsMemoryState(
+            stability: log.stability,
+            difficulty: log.difficulty,
+          )
+        : null;
+
+    return card
+        .reset(
+          memoryState: restoredMemory == null,
+          lastReview: log.lastReview == null,
+        )
+        .copyWith(
+          due: log.due,
+          state: log.state,
+          step: log.step,
+          reps: updatedReps,
+          lapses: updatedLapses,
+          memoryState: restoredMemory,
+          lastReview: log.lastReview,
+        );
   }
 
   /// Resets [card] to unlearned status.
@@ -163,21 +194,23 @@ class FsrsScheduler {
   }) {
     final resetAt = (now ?? DateTime.now()).toUtc();
     final newCard = card
-        .reset(memoryState: true)
+        .reset(memoryState: true, lastReview: true)
         .copyWith(
           due: resetAt,
           state: FsrsCardState.newCard,
+          step: 0,
           reps: resetCount ? 0 : card.reps,
           lapses: resetCount ? 0 : card.lapses,
-          lastReview: resetAt,
         );
 
     final log = FsrsReviewLog(
       rating: FsrsRating.manual,
       state: card.state,
-      due: resetAt,
-      stability: 0,
-      difficulty: 0,
+      due: card.due,
+      step: card.step,
+      stability: card.stability ?? 0,
+      difficulty: card.difficulty ?? 0,
+      lastReview: card.lastReview,
       interval: Duration.zero,
       reviewedAt: resetAt,
     );
@@ -195,24 +228,30 @@ class FsrsScheduler {
       now: currentCard.due,
       cardId: currentCard.cardId,
     );
-    final sortedReviews = List<FsrsHistoryEntry>.from(reviews)
-      ..sort((a, b) => a.review.compareTo(b.review));
+    final sortedReviews = reviews.indexed.toList()
+      ..sort((a, b) {
+        final cmp = a.$2.review.compareTo(b.$2.review);
+        return cmp != 0 ? cmp : a.$1.compareTo(b.$1);
+      });
 
     final collections = <FsrsRecordLogItem>[];
 
-    for (final rev in sortedReviews) {
+    for (final (_, rev) in sortedReviews) {
       if (rev.rating == FsrsRating.manual) {
         if (skipManual) continue;
         final reviewedAt = rev.review.toUtc();
         final due = (rev.due ?? reviewedAt).toUtc();
         final state = rev.state ?? curCard.state;
-        final scheduledDays = due.difference(reviewedAt).inDays;
-        final elapsedDays = curCard.lastReview != null
-            ? reviewedAt.difference(curCard.lastReview!).inDays.clamp(0, 100000)
-            : 0;
+        final interval = due.difference(reviewedAt);
+        final elapsedDays = _daysElapsed(curCard, reviewedAt);
+        final nextStep =
+            state == FsrsCardState.review || state == FsrsCardState.newCard
+            ? 0
+            : curCard.step;
 
         final nextCard = curCard.copyWith(
           state: state,
+          step: nextStep,
           due: due,
           lastReview: reviewedAt,
           reps: curCard.reps + 1,
@@ -228,9 +267,11 @@ class FsrsScheduler {
           rating: FsrsRating.manual,
           state: curCard.state,
           due: curCard.due,
-          stability: nextCard.stability ?? 0,
-          difficulty: nextCard.difficulty ?? 0,
-          interval: Duration(days: scheduledDays),
+          step: curCard.step,
+          stability: curCard.stability ?? 0,
+          difficulty: curCard.difficulty ?? 0,
+          lastReview: curCard.lastReview,
+          interval: interval,
           reviewedAt: reviewedAt,
           elapsedDays: elapsedDays,
         );
@@ -262,6 +303,9 @@ class FsrsScheduler {
         reviewedAt: reviewedAt,
         itemState: itemState,
         daysElapsed: daysElapsed,
+        lapses: card.state == FsrsCardState.review && rating == FsrsRating.again
+            ? card.lapses + 1
+            : card.lapses,
       );
     }
 
@@ -334,7 +378,7 @@ class FsrsScheduler {
     required FsrsCardState stepState,
     required int daysElapsed,
   }) {
-    final step = card.step;
+    final step = card.step < 0 ? 0 : card.step;
 
     if (steps.isEmpty || (step >= steps.length && rating != FsrsRating.again)) {
       return _graduate(
@@ -454,8 +498,10 @@ class FsrsScheduler {
       rating: rating,
       state: card.state,
       due: card.due,
-      stability: itemState.memory.stability,
-      difficulty: itemState.memory.difficulty,
+      step: card.step,
+      stability: card.stability ?? 0,
+      difficulty: card.difficulty ?? 0,
+      lastReview: card.lastReview,
       interval: interval,
       reviewedAt: reviewedAt,
       elapsedDays: daysElapsed,
@@ -475,32 +521,32 @@ class FsrsScheduler {
 
   int _reviewIntervalDays(FsrsItemState itemState, int daysElapsed) {
     final rawInterval = itemState.interval;
-    if (!enableFuzz || rawInterval < 2.5) {
+    if (!enableFuzz || rawInterval < 2.5 || maximumInterval < 2) {
       return rawInterval.round().clamp(1, maximumInterval);
     }
     return _applyFuzz(rawInterval, daysElapsed);
   }
 
   int _applyFuzz(double ivl, int elapsedDays) {
+    final boundedIvl = ivl.clamp(0.0, maximumInterval.toDouble());
     var delta = 1.0;
-    if (ivl > 2.5) {
-      delta += 0.15 * (ivl.clamp(2.5, 7.0) - 2.5);
+    if (boundedIvl > 2.5) {
+      delta += 0.15 * (boundedIvl.clamp(2.5, 7.0) - 2.5);
     }
-    if (ivl > 7.0) {
-      delta += 0.10 * (ivl.clamp(7.0, 20.0) - 7.0);
+    if (boundedIvl > 7.0) {
+      delta += 0.10 * (boundedIvl.clamp(7.0, 20.0) - 7.0);
     }
-    if (ivl > 20.0) {
-      delta += 0.05 * (ivl - 20.0);
+    if (boundedIvl > 20.0) {
+      delta += 0.05 * (boundedIvl - 20.0);
     }
 
-    final boundedIvl = ivl.clamp(0.0, maximumInterval.toDouble());
     var minIvl = (boundedIvl - delta).round().clamp(2, maximumInterval);
-    final maxIvl = (boundedIvl + delta).round().clamp(1, maximumInterval);
+    final maxIvl = (boundedIvl + delta).round().clamp(2, maximumInterval);
 
     if (boundedIvl > elapsedDays) {
       minIvl = minIvl.clamp(elapsedDays + 1, maximumInterval);
     }
-    minIvl = minIvl.clamp(1, maxIvl);
+    minIvl = minIvl.clamp(2, maxIvl);
 
     final rng = random ?? _defaultRandom;
     final range = maxIvl - minIvl + 1;

@@ -22,6 +22,7 @@ void main(List<String> args) async {
       }
 
       if (localLib.existsSync()) {
+        output.dependencies.add(localLib.uri);
         output.assets.code.add(
           CodeAsset(
             package: input.packageName,
@@ -36,6 +37,7 @@ void main(List<String> args) async {
       // Try prebuilt download if available
       final prebuiltUri = await _tryDownloadPrebuiltBinary(
         input: input,
+        output: output,
         configuration: configuration,
         dylibName: dylibName,
       );
@@ -64,16 +66,23 @@ const _releaseBaseUrl = 'https://github.com/iv-re/fsrs-dart/releases/download';
 
 Future<Uri?> _tryDownloadPrebuiltBinary({
   required BuildInput input,
+  required BuildOutputBuilder output,
   required String configuration,
   required String dylibName,
 }) async {
-  try {
-    final hashFile = File.fromUri(input.packageRoot.resolve('fsrs_hash'));
-    final hashesFile = File.fromUri(
-      input.packageRoot.resolve('prebuilt_hashes.json'),
-    );
-    if (!hashFile.existsSync() || !hashesFile.existsSync()) return null;
+  final hashFile = File.fromUri(input.packageRoot.resolve('fsrs_hash'));
+  final hashesFile = File.fromUri(
+    input.packageRoot.resolve('prebuilt_hashes.json'),
+  );
+  if (hashFile.existsSync()) output.dependencies.add(hashFile.uri);
+  if (hashesFile.existsSync()) output.dependencies.add(hashesFile.uri);
+  if (!hashFile.existsSync() || !hashesFile.existsSync()) return null;
 
+  File? tmpFile;
+  IOSink? fileSink;
+  final client = HttpClient()..connectionTimeout = const Duration(seconds: 15);
+
+  try {
     final hash = hashFile.readAsStringSync().trim();
     if (hash.isEmpty) return null;
 
@@ -84,7 +93,12 @@ Future<Uri?> _tryDownloadPrebuiltBinary({
     if (expectedSha256 == null) return null;
 
     final cacheDir = Directory.fromUri(
-      input.outputDirectoryShared.resolve('prebuilt_cache/$hash/'),
+      // Per configuration: the shared directory is shared across targets, and
+      // a simulator build fetches arm64 and x64, which must not overwrite
+      // each other before lipo joins them.
+      input.outputDirectoryShared.resolve(
+        'prebuilt_cache/$hash/$configuration/',
+      ),
     );
     await cacheDir.create(recursive: true);
 
@@ -94,40 +108,72 @@ Future<Uri?> _tryDownloadPrebuiltBinary({
     final downloadUrl = Uri.parse(
       '$_releaseBaseUrl/fsrs_$hash/$downloadFileName',
     );
-    final tmpFile = File.fromUri(cacheDir.uri.resolve('$dylibName.tmp'));
-    final client = HttpClient();
+    tmpFile = File.fromUri(
+      cacheDir.uri.resolve('$dylibName.$pid.tmp'),
+    );
+
+    final request = await client
+        .getUrl(downloadUrl)
+        .timeout(const Duration(seconds: 15));
+    final response = await request.close().timeout(const Duration(seconds: 15));
+    if (response.statusCode != 200) {
+      stderr.writeln(
+        '[fsrs_dart] Prebuilt binary not available '
+        '(HTTP ${response.statusCode} for $downloadFileName), '
+        'falling back to Rust build.',
+      );
+      return null;
+    }
+
+    final digestSink = AccumulatorSink<Digest>();
+    final hashSink = sha256.startChunkedConversion(digestSink);
+    fileSink = tmpFile.openWrite();
+
+    await for (final chunk in response.timeout(const Duration(seconds: 60))) {
+      hashSink.add(chunk);
+      fileSink.add(chunk);
+    }
+    hashSink.close();
+    await fileSink.flush();
+    await fileSink.close();
+    fileSink = null;
+
+    final downloadedHash = digestSink.events.single.toString();
+    if (downloadedHash != expectedSha256) {
+      stderr.writeln(
+        '[fsrs_dart] SHA-256 mismatch for $downloadFileName '
+        '(expected $expectedSha256, got $downloadedHash), '
+        'falling back to Rust build.',
+      );
+      if (tmpFile.existsSync()) await tmpFile.delete();
+      return null;
+    }
 
     try {
-      final request = await client
-          .getUrl(downloadUrl)
-          .timeout(const Duration(seconds: 15));
-      final response = await request.close();
-      if (response.statusCode != 200) return null;
-
-      final digestSink = AccumulatorSink<Digest>();
-      final hashSink = sha256.startChunkedConversion(digestSink);
-      final fileSink = tmpFile.openWrite();
-
-      await for (final chunk in response) {
-        hashSink.add(chunk);
-        fileSink.add(chunk);
-      }
-      hashSink.close();
-      await fileSink.flush();
-      await fileSink.close();
-
-      final downloadedHash = digestSink.events.single.toString();
-      if (downloadedHash != expectedSha256) {
-        await tmpFile.delete();
-        return null;
-      }
       await tmpFile.rename(cachedFile.path);
-      return cachedFile.uri;
-    } finally {
-      client.close();
+    } on FileSystemException {
+      if (cachedFile.existsSync()) {
+        if (tmpFile.existsSync()) await tmpFile.delete();
+        return cachedFile.uri;
+      }
+      rethrow;
     }
-  } catch (_) {
+    return cachedFile.uri;
+  } catch (e) {
+    stderr.writeln(
+      '[fsrs_dart] Prebuilt download failed ($e), falling back to Rust build.',
+    );
+    try {
+      await fileSink?.close();
+    } catch (_) {}
+    try {
+      if (tmpFile != null && tmpFile.existsSync()) {
+        await tmpFile.delete();
+      }
+    } catch (_) {}
     return null;
+  } finally {
+    client.close();
   }
 }
 

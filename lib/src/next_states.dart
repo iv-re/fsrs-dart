@@ -1,7 +1,9 @@
 import 'package:fsrs_dart/src/item_state.dart';
 import 'package:fsrs_dart/src/rating.dart';
+import 'package:meta/meta.dart';
 
 /// The calculated next states for each of the four possible review ratings.
+@immutable
 final class const FsrsNextStates({
   /// The next state if the user chooses 'Again'.
   required final FsrsItemState again,
@@ -36,6 +38,19 @@ final class const FsrsNextStates({
     FsrsRating.good: good,
     FsrsRating.easy: easy,
   };
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is FsrsNextStates &&
+          runtimeType == other.runtimeType &&
+          again == other.again &&
+          hard == other.hard &&
+          good == other.good &&
+          easy == other.easy;
+
+  @override
+  int get hashCode => Object.hash(again, hard, good, easy);
 
   @override
   String toString() =>

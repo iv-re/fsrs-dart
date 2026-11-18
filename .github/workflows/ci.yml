@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "master"]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Dart
+        uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Run Rust tests and clippy
+        run: |
+          cargo test --manifest-path src/Cargo.toml
+          cargo clippy --manifest-path src/Cargo.toml --all-targets -- -D warnings
+
+      - name: Install Dart dependencies
+        run: dart pub get
+
+      - name: Analyze Dart code
+        run: dart analyze --fatal-infos
+
+      - name: Build native library for host
+        run: dart tool/build_tool.dart build --config=linux_x64
+
+      - name: Run Dart tests
+        run: dart test
