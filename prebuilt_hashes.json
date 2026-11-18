@@ -1,1 +1,15 @@
-{}
+{
+  "android_arm_libfsrs_dart.so": "afc004a3cece618ad6db60d20ad5e9b80da98fab30edd3893200fb386965e24a",
+  "android_arm64_libfsrs_dart.so": "71ef6127e1bdc7620e6724a2b0063b1bcfdf6b4818fe21578fde7a3821607520",
+  "android_x64_libfsrs_dart.so": "bfa2ec9f8e72bf2057bfdbc2a2234ef81ffa9011d601abac0ad973b626add845",
+  "android_x86_libfsrs_dart.so": "ea7425c87d738973387f94a0d2a4efd84694bd75f703face6b0c9c0b6fe1164b",
+  "ios_arm64_libfsrs_dart.dylib": "66e2b3e15fff4f5f53da894afacfd12b8b487eb5b1aa86dd6fb34ef495999664",
+  "ios_sim_arm64_libfsrs_dart.dylib": "033875822ee9e25a277316802f947ddbfee7fcff3307d36b0b2d4bee8deca640",
+  "ios_sim_x64_libfsrs_dart.dylib": "e9a3f30e63ce79391490ed3f54f22b110d1ff977c877bd59b63c380c4ec11a42",
+  "linux_arm64_libfsrs_dart.so": "b3c181f83a75b5a44a2c0dc6c91ac59601eb6dc74a360c18be5d10683526a646",
+  "linux_x64_libfsrs_dart.so": "923e8b4b79220bb6a3e78c004021fba359775dbbea7b72d9229fe31303cedc4a",
+  "macos_arm64_libfsrs_dart.dylib": "f039e3509537f871c08a5b2042a36c86a6e7d08d02d60bdad569e990055589aa",
+  "macos_x64_libfsrs_dart.dylib": "b3f853105eb2b9cba11fa1d10be99c773ea0cd775e385d73353a31808dd9c335",
+  "windows_arm64_fsrs_dart.dll": "f05a979500ff9875047122ff0fcc6a25c2de247628dbd8c10471f929ceb9f094",
+  "windows_x64_fsrs_dart.dll": "f90df933df19bdec53cda54fb1549bf2747b1fad62ac55115546b101f4ed6dd2"
+}
