@@ -1,6 +1,6 @@
 [package]
 name = "fsrs_dart"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 
 [lib]
@@ -9,7 +9,7 @@ crate-type = ["cdylib", "staticlib"]
 path = "lib.rs"
 
 [dependencies]
-fsrs = "6.6.2"
+fsrs = "7.0.0"
 
 [build-dependencies]
 cbindgen = "0.29.2"

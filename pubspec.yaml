@@ -1,6 +1,6 @@
 name: fsrs_dart
-description: Free Spaced Repetition Scheduler (FSRS-6) for Dart and Flutter, powered by the official Rust fsrs-rs engine via FFI.
-version: 0.2.0
+description: Free Spaced Repetition Scheduler (FSRS-7 and FSRS-6) for Dart and Flutter, powered by the official Rust fsrs-rs engine via FFI.
+version: 0.3.0
 repository: https://github.com/iv-re/fsrs-dart
 homepage: https://github.com/iv-re/fsrs-dart
 issue_tracker: https://github.com/iv-re/fsrs-dart/issues

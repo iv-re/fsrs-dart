@@ -1,26 +1,27 @@
 import 'package:fsrs_dart/fsrs_dart.dart';
 
 void main() {
-  final fsrs = Fsrs();
+  final scheduler = FsrsScheduler();
   final now = DateTime.now().toUtc();
 
-  // Create a fresh card
-  final card = fsrs.createEmptyCard(now: now);
-  print('New card state: ${card.state.name}');
+  final card = FsrsCard.create(now: now);
 
-  // Preview next due intervals for all available grades
-  final preview = fsrs.repeat(card, now: now);
-  for (final entry in preview.entries) {
-    print('${entry.key.name}: due in ${entry.value.interval}');
+  final preview = scheduler.preview(card, now: now);
+  for (final rating in FsrsRating.values) {
+    print('${rating.name}: due in ${preview[rating].log.interval}');
   }
 
-  // User rates the card as "good"
-  final result = fsrs.next(card, FsrsRating.good, now: now);
-  print('Reviewed card due: ${result.card.due}');
-  print('Stability: ${result.card.stability}');
-  print('Difficulty: ${result.card.difficulty}');
+  final result = scheduler.review(card, FsrsRating.good, now: now);
+  print('Due: ${result.card.due}');
 
-  // Check recall probability at current time
-  final retrievability = fsrs.getRetrievability(result.card, now: now);
-  print('Retrievability: ${(retrievability * 100).toStringAsFixed(1)}%');
+  if (result.card case FsrsActiveCard(:final memory)) {
+    print('Stability: ${memory.stability}');
+    print('Difficulty: ${memory.difficulty}');
+  }
+
+  final recall = scheduler.retrievability(
+    result.card,
+    now: now.add(const Duration(days: 1)),
+  );
+  print('Retrievability: ${(recall! * 100).toStringAsFixed(1)}%');
 }

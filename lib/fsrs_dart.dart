@@ -2,14 +2,13 @@
 library;
 
 export 'src/card.dart';
-export 'src/card_state.dart';
 export 'src/exceptions.dart';
-export 'src/fsrs.dart';
 export 'src/history.dart';
 export 'src/item_state.dart';
 export 'src/memory_state.dart';
-export 'src/model_evaluation.dart';
+export 'src/model.dart';
 export 'src/next_states.dart';
+export 'src/optimizer.dart';
 export 'src/rating.dart';
 export 'src/review_log.dart';
 export 'src/scheduler.dart';

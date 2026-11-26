@@ -7,195 +7,435 @@ library;
 
 import 'dart:ffi' as ffi;
 
-/// Computes optimized FSRS parameters for a given training set and writes them
-/// into `out_params`. Returns `true` on success, `false` on error or invalid inputs.
+/// Optimizes parameters of `version` (6 or 7) for a training set.
+///
+/// `num_relearning_steps < 0` means "unknown". On success writes the
+/// parameters (21 or 34 values) and their count.
 ///
 /// # Safety
 ///
-/// - `train_set` must be a valid non-null pointer to an `FsrsItems` struct.
-/// - `out_params` must be a valid non-null pointer to a writable buffer of at least
-/// `out_len` floats (`out_len >= fsrs_parameters_len()`).
+/// `training_set` must point to a valid `TrainingSet` whose pointers are valid
+/// for the declared lengths; `out_params` must be valid for `out_len` writes
+/// and `out_written` for one write.
 @ffi.Native<
-  ffi.Bool Function(
-    ffi.Pointer<fsrs_FsrsItems>,
+  ffi.UnsignedInt Function(
+    ffi.Pointer<fsrs_TrainingSet>,
+    ffi.Uint32,
     ffi.Bool,
     ffi.Int32,
     ffi.Pointer<ffi.Float>,
     ffi.Size,
+    ffi.Pointer<ffi.Size>,
   )
->()
-external bool fsrs_compute_parameters(
-  ffi.Pointer<fsrs_FsrsItems> train_set,
+>(symbol: 'fsrs_compute_parameters')
+external int _fsrs_compute_parameters(
+  ffi.Pointer<fsrs_TrainingSet> training_set,
+  int version,
   bool enable_short_term,
   int num_relearning_steps,
   ffi.Pointer<ffi.Float> out_params,
   int out_len,
+  ffi.Pointer<ffi.Size> out_written,
 );
 
-/// Computes the retrievability (probability of recall between 0.0 and 1.0)
-/// for a given memory state, elapsed days, and decay parameter.
-///
-/// # Safety
-///
-/// If non-null, `memory_state` must be a valid pointer to a `MemoryState` instance.
-@ffi.Native<
-  ffi.Float Function(ffi.Pointer<fsrs_MemoryState>, ffi.Float, ffi.Float)
->()
-external double fsrs_current_retrievability(
-  ffi.Pointer<fsrs_MemoryState> memory_state,
-  double days_elapsed,
-  double decay,
-);
-
-/// Returns the decay parameter configured for this FSRS instance, or
-/// `FSRS6_DEFAULT_DECAY` if `fsrs` is null.
-///
-/// # Safety
-///
-/// If non-null, `fsrs` must be a valid pointer to an `FSRS` instance created by `fsrs_new`.
-@ffi.Native<ffi.Float Function(ffi.Pointer<fsrs_FSRS>)>()
-external double fsrs_decay(
-  ffi.Pointer<fsrs_FSRS> fsrs,
-);
-
-/// Returns the default decay parameter (`FSRS6_DEFAULT_DECAY`).
-@ffi.Native<ffi.Float Function()>()
-external double fsrs_default_decay();
-
-/// Copies the default FSRS parameters into the provided buffer.
-///
-/// # Safety
-///
-/// If non-null, `out_params` must be valid for writes of at least
-/// `fsrs_parameters_len()` contiguous `f32` values.
-@ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Float>)>()
-external void fsrs_default_parameters(
+fsrs_Status fsrs_compute_parameters(
+  ffi.Pointer<fsrs_TrainingSet> training_set,
+  int version,
+  bool enable_short_term,
+  int num_relearning_steps,
   ffi.Pointer<ffi.Float> out_params,
-);
+  int out_len,
+  ffi.Pointer<ffi.Size> out_written,
+) {
+  return fsrs_Status.fromValue(
+    _fsrs_compute_parameters(
+      training_set,
+      version,
+      enable_short_term,
+      num_relearning_steps,
+      out_params,
+      out_len,
+      out_written,
+    ),
+  );
+}
 
-/// Evaluates the model using the provided training set.
+/// Copies the default parameters of `version` into `out_params`.
 ///
 /// # Safety
 ///
-/// - `fsrs` must be a valid non-null pointer to an `FSRS` instance.
-/// - `train_set` must be a valid non-null pointer to an `FsrsItems` struct.
-/// - `out_eval` must be a valid non-null pointer to a writable `ModelEvaluation` struct.
+/// `out_params` must be valid for writes of `out_len` `f32` values and
+/// `out_written` must be valid for one `usize` write.
 @ffi.Native<
-  ffi.Bool Function(
+  ffi.UnsignedInt Function(
+    ffi.Uint32,
+    ffi.Pointer<ffi.Float>,
+    ffi.Size,
+    ffi.Pointer<ffi.Size>,
+  )
+>(symbol: 'fsrs_default_parameters')
+external int _fsrs_default_parameters(
+  int version,
+  ffi.Pointer<ffi.Float> out_params,
+  int out_len,
+  ffi.Pointer<ffi.Size> out_written,
+);
+
+fsrs_Status fsrs_default_parameters(
+  int version,
+  ffi.Pointer<ffi.Float> out_params,
+  int out_len,
+  ffi.Pointer<ffi.Size> out_written,
+) {
+  return fsrs_Status.fromValue(
+    _fsrs_default_parameters(
+      version,
+      out_params,
+      out_len,
+      out_written,
+    ),
+  );
+}
+
+/// Measures how well the model predicts the recalls in a training set.
+///
+/// # Safety
+///
+/// `fsrs` must be a live handle, `training_set` as in
+/// `fsrs_compute_parameters`, and `out_eval` valid for one write.
+@ffi.Native<
+  ffi.UnsignedInt Function(
     ffi.Pointer<fsrs_FSRS>,
-    ffi.Pointer<fsrs_FsrsItems>,
+    ffi.Pointer<fsrs_TrainingSet>,
     ffi.Pointer<fsrs_ModelEvaluation>,
   )
->()
-external bool fsrs_evaluate(
+>(symbol: 'fsrs_evaluate')
+external int _fsrs_evaluate(
   ffi.Pointer<fsrs_FSRS> fsrs,
-  ffi.Pointer<fsrs_FsrsItems> train_set,
+  ffi.Pointer<fsrs_TrainingSet> training_set,
   ffi.Pointer<fsrs_ModelEvaluation> out_eval,
 );
 
-/// Frees the memory allocated for an FSRS instance.
+fsrs_Status fsrs_evaluate(
+  ffi.Pointer<fsrs_FSRS> fsrs,
+  ffi.Pointer<fsrs_TrainingSet> training_set,
+  ffi.Pointer<fsrs_ModelEvaluation> out_eval,
+) {
+  return fsrs_Status.fromValue(
+    _fsrs_evaluate(
+      fsrs,
+      training_set,
+      out_eval,
+    ),
+  );
+}
+
+/// Releases a model created by `fsrs_new`. NULL is ignored.
 ///
 /// # Safety
 ///
-/// If non-null, `fsrs` must be a valid pointer to an `FSRS` instance created by `fsrs_new`
-/// and must not be freed more than once.
+/// `fsrs` must be NULL or a handle from `fsrs_new` that was not freed yet.
 @ffi.Native<ffi.Void Function(ffi.Pointer<fsrs_FSRS>)>()
 external void fsrs_free(
   ffi.Pointer<fsrs_FSRS> fsrs,
 );
 
-/// Creates a new FSRS instance. Returns NULL if parameters are invalid.
+/// Replays a review history and returns the resulting memory state.
+///
+/// `starting_state` may be NULL (the first review starts a new card) or the
+/// state of a truncated history, e.g. from `fsrs_memory_state_from_sm2`.
 ///
 /// # Safety
 ///
-/// If `parameters` is non-null and `len > 0`, `parameters` must be valid for reads
-/// of `len` contiguous `f32` values.
-@ffi.Native<ffi.Pointer<fsrs_FSRS> Function(ffi.Pointer<ffi.Float>, ffi.Size)>()
-external ffi.Pointer<fsrs_FSRS> fsrs_new(
-  ffi.Pointer<ffi.Float> parameters,
+/// `fsrs` must be a live handle, `reviews` valid for `len` reads,
+/// `starting_state` NULL or valid for reads, `out_state` valid for one write.
+@ffi.Native<
+  ffi.UnsignedInt Function(
+    ffi.Pointer<fsrs_FSRS>,
+    ffi.Pointer<fsrs_Review>,
+    ffi.Size,
+    ffi.Pointer<fsrs_MemoryState>,
+    ffi.Pointer<fsrs_MemoryState>,
+  )
+>(symbol: 'fsrs_memory_state')
+external int _fsrs_memory_state(
+  ffi.Pointer<fsrs_FSRS> fsrs,
+  ffi.Pointer<fsrs_Review> reviews,
   int len,
+  ffi.Pointer<fsrs_MemoryState> starting_state,
+  ffi.Pointer<fsrs_MemoryState> out_state,
 );
 
-/// Computes the next states for a card and writes them into `out_states`.
-/// Returns `true` on success, `false` if inputs are invalid.
+fsrs_Status fsrs_memory_state(
+  ffi.Pointer<fsrs_FSRS> fsrs,
+  ffi.Pointer<fsrs_Review> reviews,
+  int len,
+  ffi.Pointer<fsrs_MemoryState> starting_state,
+  ffi.Pointer<fsrs_MemoryState> out_state,
+) {
+  return fsrs_Status.fromValue(
+    _fsrs_memory_state(
+      fsrs,
+      reviews,
+      len,
+      starting_state,
+      out_state,
+    ),
+  );
+}
+
+/// Converts an SM-2 card (ease factor, interval in days) into a memory state.
+/// FSRS-7 ignores `ease_factor`.
 ///
 /// # Safety
 ///
-/// - `fsrs` must be a valid non-null pointer to an `FSRS` instance.
-/// - `memory_state` must be a valid pointer to a `MemoryState` instance, or NULL for a new card.
-/// - `out_states` must be a valid non-null pointer to a writable `NextStates` struct.
+/// `fsrs` must be a live handle and `out_state` valid for one write.
 @ffi.Native<
-  ffi.Bool Function(
+  ffi.UnsignedInt Function(
+    ffi.Pointer<fsrs_FSRS>,
+    ffi.Float,
+    ffi.Float,
+    ffi.Float,
+    ffi.Pointer<fsrs_MemoryState>,
+  )
+>(symbol: 'fsrs_memory_state_from_sm2')
+external int _fsrs_memory_state_from_sm2(
+  ffi.Pointer<fsrs_FSRS> fsrs,
+  double ease_factor,
+  double interval,
+  double sm2_retention,
+  ffi.Pointer<fsrs_MemoryState> out_state,
+);
+
+fsrs_Status fsrs_memory_state_from_sm2(
+  ffi.Pointer<fsrs_FSRS> fsrs,
+  double ease_factor,
+  double interval,
+  double sm2_retention,
+  ffi.Pointer<fsrs_MemoryState> out_state,
+) {
+  return fsrs_Status.fromValue(
+    _fsrs_memory_state_from_sm2(
+      fsrs,
+      ease_factor,
+      interval,
+      sm2_retention,
+      out_state,
+    ),
+  );
+}
+
+/// Creates a model. Empty parameters select the FSRS-7 defaults; 17, 19 or 21
+/// parameters select FSRS-6; 34 select FSRS-7.
+///
+/// # Safety
+///
+/// If `len > 0`, `parameters` must be valid for reads of `len` `f32` values.
+/// `out_fsrs` must be valid for one pointer write. The returned handle must
+/// be released with `fsrs_free`.
+@ffi.Native<
+  ffi.UnsignedInt Function(
+    ffi.Pointer<ffi.Float>,
+    ffi.Size,
+    ffi.Pointer<ffi.Pointer<fsrs_FSRS>>,
+  )
+>(symbol: 'fsrs_new')
+external int _fsrs_new(
+  ffi.Pointer<ffi.Float> parameters,
+  int len,
+  ffi.Pointer<ffi.Pointer<fsrs_FSRS>> out_fsrs,
+);
+
+fsrs_Status fsrs_new(
+  ffi.Pointer<ffi.Float> parameters,
+  int len,
+  ffi.Pointer<ffi.Pointer<fsrs_FSRS>> out_fsrs,
+) {
+  return fsrs_Status.fromValue(
+    _fsrs_new(
+      parameters,
+      len,
+      out_fsrs,
+    ),
+  );
+}
+
+/// Computes the interval in days at which recall drops to `desired_retention`.
+///
+/// # Safety
+///
+/// `fsrs` must be a live handle, `memory_state` valid for reads and
+/// `out_days` valid for one write.
+@ffi.Native<
+  ffi.UnsignedInt Function(
     ffi.Pointer<fsrs_FSRS>,
     ffi.Pointer<fsrs_MemoryState>,
     ffi.Float,
-    ffi.Uint32,
-    ffi.Pointer<fsrs_NextStates>,
+    ffi.Pointer<ffi.Float>,
   )
->()
-external bool fsrs_next_states(
+>(symbol: 'fsrs_next_interval')
+external int _fsrs_next_interval(
   ffi.Pointer<fsrs_FSRS> fsrs,
   ffi.Pointer<fsrs_MemoryState> memory_state,
   double desired_retention,
-  int days_elapsed,
+  ffi.Pointer<ffi.Float> out_days,
+);
+
+fsrs_Status fsrs_next_interval(
+  ffi.Pointer<fsrs_FSRS> fsrs,
+  ffi.Pointer<fsrs_MemoryState> memory_state,
+  double desired_retention,
+  ffi.Pointer<ffi.Float> out_days,
+) {
+  return fsrs_Status.fromValue(
+    _fsrs_next_interval(
+      fsrs,
+      memory_state,
+      desired_retention,
+      out_days,
+    ),
+  );
+}
+
+/// Computes the memory states and intervals for all four ratings.
+///
+/// # Safety
+///
+/// `fsrs` must be a live handle, `memory_state` NULL (new card) or valid for
+/// reads, and `out_states` valid for one write.
+@ffi.Native<
+  ffi.UnsignedInt Function(
+    ffi.Pointer<fsrs_FSRS>,
+    ffi.Pointer<fsrs_MemoryState>,
+    ffi.Float,
+    ffi.Float,
+    ffi.Pointer<fsrs_NextStates>,
+  )
+>(symbol: 'fsrs_next_states')
+external int _fsrs_next_states(
+  ffi.Pointer<fsrs_FSRS> fsrs,
+  ffi.Pointer<fsrs_MemoryState> memory_state,
+  double desired_retention,
+  double days_elapsed,
   ffi.Pointer<fsrs_NextStates> out_states,
 );
 
-/// Returns the number of default parameters in FSRS (21).
-@ffi.Native<ffi.Size Function()>()
-external int fsrs_parameters_len();
+fsrs_Status fsrs_next_states(
+  ffi.Pointer<fsrs_FSRS> fsrs,
+  ffi.Pointer<fsrs_MemoryState> memory_state,
+  double desired_retention,
+  double days_elapsed,
+  ffi.Pointer<fsrs_NextStates> out_states,
+) {
+  return fsrs_Status.fromValue(
+    _fsrs_next_states(
+      fsrs,
+      memory_state,
+      desired_retention,
+      days_elapsed,
+      out_states,
+    ),
+  );
+}
+
+/// Copies the model's canonical parameters (filled to the version's full
+/// length) into `out_params`.
+///
+/// # Safety
+///
+/// `fsrs` must be a live handle; `out_params` must be valid for `out_len`
+/// writes and `out_written` for one write.
+@ffi.Native<
+  ffi.UnsignedInt Function(
+    ffi.Pointer<fsrs_FSRS>,
+    ffi.Pointer<ffi.Float>,
+    ffi.Size,
+    ffi.Pointer<ffi.Size>,
+  )
+>(symbol: 'fsrs_parameters')
+external int _fsrs_parameters(
+  ffi.Pointer<fsrs_FSRS> fsrs,
+  ffi.Pointer<ffi.Float> out_params,
+  int out_len,
+  ffi.Pointer<ffi.Size> out_written,
+);
+
+fsrs_Status fsrs_parameters(
+  ffi.Pointer<fsrs_FSRS> fsrs,
+  ffi.Pointer<ffi.Float> out_params,
+  int out_len,
+  ffi.Pointer<ffi.Size> out_written,
+) {
+  return fsrs_Status.fromValue(
+    _fsrs_parameters(
+      fsrs,
+      out_params,
+      out_len,
+      out_written,
+    ),
+  );
+}
+
+/// Returns the number of parameters of a model version (21 for 6, 34 for 7),
+/// or 0 for an unknown version.
+@ffi.Native<ffi.Size Function(ffi.Uint32)>()
+external int fsrs_parameters_len(
+  int version,
+);
+
+/// Computes the probability of recall after `days_elapsed` days.
+///
+/// # Safety
+///
+/// `fsrs` must be a live handle, `memory_state` valid for reads and
+/// `out_retrievability` valid for one write.
+@ffi.Native<
+  ffi.UnsignedInt Function(
+    ffi.Pointer<fsrs_FSRS>,
+    ffi.Pointer<fsrs_MemoryState>,
+    ffi.Float,
+    ffi.Pointer<ffi.Float>,
+  )
+>(symbol: 'fsrs_retrievability')
+external int _fsrs_retrievability(
+  ffi.Pointer<fsrs_FSRS> fsrs,
+  ffi.Pointer<fsrs_MemoryState> memory_state,
+  double days_elapsed,
+  ffi.Pointer<ffi.Float> out_retrievability,
+);
+
+fsrs_Status fsrs_retrievability(
+  ffi.Pointer<fsrs_FSRS> fsrs,
+  ffi.Pointer<fsrs_MemoryState> memory_state,
+  double days_elapsed,
+  ffi.Pointer<ffi.Float> out_retrievability,
+) {
+  return fsrs_Status.fromValue(
+    _fsrs_retrievability(
+      fsrs,
+      memory_state,
+      days_elapsed,
+      out_retrievability,
+    ),
+  );
+}
+
+/// Returns the model version (6 or 7), or 0 for a NULL handle.
+///
+/// # Safety
+///
+/// `fsrs` must be NULL or a live handle from `fsrs_new`.
+@ffi.Native<ffi.Uint32 Function(ffi.Pointer<fsrs_FSRS>)>()
+external int fsrs_version(
+  ffi.Pointer<fsrs_FSRS> fsrs,
+);
 
 final class fsrs_FSRS extends ffi.Opaque {}
-
-final class fsrs_FSRSItem extends ffi.Struct {
-  external ffi.Pointer<fsrs_FSRSReview> reviews;
-
-  @ffi.Size()
-  external int len;
-
-  static ffi.Pointer<fsrs_FSRSItem> $allocate(
-    ffi.Allocator $allocator, {
-    required ffi.Pointer<fsrs_FSRSReview> reviews,
-    required int len,
-  }) => $allocator<fsrs_FSRSItem>()
-    ..ref.reviews = reviews
-    ..ref.len = len;
-}
-
-final class fsrs_FSRSReview extends ffi.Struct {
-  @ffi.Uint32()
-  external int rating;
-
-  @ffi.Uint32()
-  external int delta_t;
-
-  static ffi.Pointer<fsrs_FSRSReview> $allocate(
-    ffi.Allocator $allocator, {
-    required int rating,
-    required int delta_t,
-  }) => $allocator<fsrs_FSRSReview>()
-    ..ref.rating = rating
-    ..ref.delta_t = delta_t;
-}
-
-final class fsrs_FsrsItems extends ffi.Struct {
-  external ffi.Pointer<fsrs_FSRSItem> items;
-
-  @ffi.Size()
-  external int len;
-
-  static ffi.Pointer<fsrs_FsrsItems> $allocate(
-    ffi.Allocator $allocator, {
-    required ffi.Pointer<fsrs_FSRSItem> items,
-    required int len,
-  }) => $allocator<fsrs_FsrsItems>()
-    ..ref.items = items
-    ..ref.len = len;
-}
 
 final class fsrs_ItemState extends ffi.Struct {
   external fsrs_MemoryState memory;
 
+  /// Interval in days (fractional).
   @ffi.Float()
   external double interval;
 }
@@ -207,13 +447,20 @@ final class fsrs_MemoryState extends ffi.Struct {
   @ffi.Float()
   external double difficulty;
 
+  /// The fast stability trace of FSRS-7. Ignored by FSRS-6 models, which
+  /// always report it equal to `stability`.
+  @ffi.Float()
+  external double stability_fast;
+
   static ffi.Pointer<fsrs_MemoryState> $allocate(
     ffi.Allocator $allocator, {
     required double stability,
     required double difficulty,
+    required double stability_fast,
   }) => $allocator<fsrs_MemoryState>()
     ..ref.stability = stability
-    ..ref.difficulty = difficulty;
+    ..ref.difficulty = difficulty
+    ..ref.stability_fast = stability_fast;
 }
 
 final class fsrs_ModelEvaluation extends ffi.Struct {
@@ -240,4 +487,93 @@ final class fsrs_NextStates extends ffi.Struct {
   external fsrs_ItemState good;
 
   external fsrs_ItemState easy;
+}
+
+final class fsrs_Review extends ffi.Struct {
+  /// 1 = again, 2 = hard, 3 = good, 4 = easy.
+  @ffi.Uint32()
+  external int rating;
+
+  /// Days since the previous review (fractional). Must be 0 for the first review.
+  @ffi.Float()
+  external double delta_t;
+
+  static ffi.Pointer<fsrs_Review> $allocate(
+    ffi.Allocator $allocator, {
+    required int rating,
+    required double delta_t,
+  }) => $allocator<fsrs_Review>()
+    ..ref.rating = rating
+    ..ref.delta_t = delta_t;
+}
+
+enum fsrs_Status {
+  fsrs_Status_Ok(0),
+
+  /// A required pointer argument was NULL.
+  fsrs_Status_NullPointer(1),
+
+  /// Model parameters are malformed (wrong count, non-finite values, ...).
+  fsrs_Status_InvalidParameters(2),
+
+  /// Some other argument is out of range (retention, elapsed days, rating, ...).
+  fsrs_Status_InvalidInput(3),
+
+  /// The training set is empty or has too few usable reviews.
+  fsrs_Status_NotEnoughData(4),
+
+  /// The output buffer is shorter than the result.
+  fsrs_Status_BufferTooSmall(5),
+
+  /// Any other failure inside the FSRS engine.
+  fsrs_Status_Failed(6);
+
+  final int value;
+  const fsrs_Status(this.value);
+
+  static fsrs_Status fromValue(int value) => switch (value) {
+    0 => fsrs_Status_Ok,
+    1 => fsrs_Status_NullPointer,
+    2 => fsrs_Status_InvalidParameters,
+    3 => fsrs_Status_InvalidInput,
+    4 => fsrs_Status_NotEnoughData,
+    5 => fsrs_Status_BufferTooSmall,
+    6 => fsrs_Status_Failed,
+    _ => throw ArgumentError('Unknown value for fsrs_Status: $value'),
+  };
+}
+
+final class fsrs_TrainingItem extends ffi.Struct {
+  external ffi.Pointer<fsrs_Review> reviews;
+
+  @ffi.Size()
+  external int len;
+
+  static ffi.Pointer<fsrs_TrainingItem> $allocate(
+    ffi.Allocator $allocator, {
+    required ffi.Pointer<fsrs_Review> reviews,
+    required int len,
+  }) => $allocator<fsrs_TrainingItem>()
+    ..ref.reviews = reviews
+    ..ref.len = len;
+}
+
+final class fsrs_TrainingSet extends ffi.Struct {
+  external ffi.Pointer<fsrs_TrainingItem> items;
+
+  @ffi.Size()
+  external int len;
+
+  /// NULL or `len` values.
+  external ffi.Pointer<ffi.Int64> card_ids;
+
+  static ffi.Pointer<fsrs_TrainingSet> $allocate(
+    ffi.Allocator $allocator, {
+    required ffi.Pointer<fsrs_TrainingItem> items,
+    required int len,
+    required ffi.Pointer<ffi.Int64> card_ids,
+  }) => $allocator<fsrs_TrainingSet>()
+    ..ref.items = items
+    ..ref.len = len
+    ..ref.card_ids = card_ids;
 }
