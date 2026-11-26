@@ -1,83 +1,143 @@
-import 'package:fsrs_dart/src/card_state.dart';
+import 'package:fsrs_dart/src/card.dart';
+import 'package:fsrs_dart/src/memory_state.dart';
 import 'package:fsrs_dart/src/rating.dart';
 import 'package:meta/meta.dart';
 
-/// Represents a single review log entry recorded after reviewing a card.
-///
-/// The [state], [due], [step], [stability], [difficulty], and [lastReview]
-/// fields capture the card's snapshot *before* this review was applied
-/// (enabling lossless `rollback`), while [rating], [interval], [reviewedAt],
-/// and [elapsedDays] describe the review event itself.
+/// The `...Before` fields hold the card as it was before the event.
 @immutable
-final class const FsrsReviewLog({
-  /// The rating assigned during this review.
-  required final FsrsRating rating,
+final class FsrsReviewLog {
+  /// Timestamps are converted to UTC. Throws [ArgumentError] if
+  /// [phaseBefore] is set without [memoryBefore] and [lastReviewBefore], or a
+  /// duration or count is negative.
+  FsrsReviewLog({
+    required DateTime reviewedAt,
+    required this.interval,
+    required DateTime dueBefore,
+    this.cardId,
+    this.rating,
+    this.elapsed = Duration.zero,
+    this.phaseBefore,
+    this.stepBefore = 0,
+    this.memoryBefore,
+    DateTime? lastReviewBefore,
+    this.repsBefore = 0,
+    this.lapsesBefore = 0,
+  }) : reviewedAt = reviewedAt.toUtc(),
+       dueBefore = dueBefore.toUtc(),
+       lastReviewBefore = lastReviewBefore?.toUtc() {
+    if (phaseBefore != null &&
+        (memoryBefore == null || this.lastReviewBefore == null)) {
+      throw ArgumentError(
+        'An active card (phaseBefore != null) needs memoryBefore and '
+        'lastReviewBefore.',
+      );
+    }
+    if (interval.isNegative) {
+      throw ArgumentError.value(interval, 'interval', 'must not be negative');
+    }
+    if (elapsed.isNegative) {
+      throw ArgumentError.value(elapsed, 'elapsed', 'must not be negative');
+    }
+    for (final (value, name) in [
+      (stepBefore, 'stepBefore'),
+      (repsBefore, 'repsBefore'),
+      (lapsesBefore, 'lapsesBefore'),
+    ]) {
+      if (value < 0) {
+        throw ArgumentError.value(value, name, 'must not be negative');
+      }
+    }
+  }
 
-  /// The card state before this review was applied.
-  required final FsrsCardState state,
+  final int? cardId;
 
-  /// The card's scheduled due date before this review was applied.
-  required final DateTime due,
+  /// `null` for a manual change (forget, manual reschedule entry).
+  final FsrsRating? rating;
 
-  /// The stability of the card before this review (0 if brand-new).
-  required final double stability,
+  /// UTC.
+  final DateTime reviewedAt;
 
-  /// The difficulty of the card before this review (0 if brand-new).
-  required final double difficulty,
+  /// Zero for the first review.
+  final Duration elapsed;
 
-  /// The scheduled interval until the next review.
-  required final Duration interval,
+  final Duration interval;
 
-  /// The timestamp when the review took place.
-  required final DateTime reviewedAt,
+  /// `null` if the card was new.
+  final FsrsPhase? phaseBefore;
 
-  /// The number of days elapsed since the prior review (0 if first review).
-  final int elapsedDays = 0,
+  final int stepBefore;
 
-  /// The card's learning/relearning step index before this review.
-  final int step = 0,
+  /// UTC.
+  final DateTime dueBefore;
 
-  /// The card's previous review timestamp before this review (null if new).
-  final DateTime? lastReview,
-}) {
-  /// The scheduled interval in whole days.
-  int get scheduledDays => interval.inDays;
+  /// `null` if the card was new.
+  final FsrsMemoryState? memoryBefore;
+
+  /// `null` if the card was new.
+  final DateTime? lastReviewBefore;
+
+  final int repsBefore;
+
+  final int lapsesBefore;
+
+  FsrsCard get cardBefore {
+    final phase = phaseBefore;
+    if (phase == null) {
+      return FsrsNewCard(
+        id: cardId,
+        due: dueBefore,
+        reps: repsBefore,
+        lapses: lapsesBefore,
+      );
+    }
+    return FsrsActiveCard(
+      id: cardId,
+      phase: phase,
+      step: stepBefore,
+      memory: memoryBefore!,
+      due: dueBefore,
+      lastReview: lastReviewBefore!,
+      reps: repsBefore,
+      lapses: lapsesBefore,
+    );
+  }
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is FsrsReviewLog &&
-          runtimeType == other.runtimeType &&
+          cardId == other.cardId &&
           rating == other.rating &&
-          state == other.state &&
-          due == other.due &&
-          stability == other.stability &&
-          difficulty == other.difficulty &&
-          interval == other.interval &&
           reviewedAt == other.reviewedAt &&
-          elapsedDays == other.elapsedDays &&
-          step == other.step &&
-          lastReview == other.lastReview;
+          elapsed == other.elapsed &&
+          interval == other.interval &&
+          phaseBefore == other.phaseBefore &&
+          stepBefore == other.stepBefore &&
+          dueBefore == other.dueBefore &&
+          memoryBefore == other.memoryBefore &&
+          lastReviewBefore == other.lastReviewBefore &&
+          repsBefore == other.repsBefore &&
+          lapsesBefore == other.lapsesBefore;
 
   @override
   int get hashCode => Object.hash(
+    cardId,
     rating,
-    state,
-    due,
-    stability,
-    difficulty,
-    interval,
     reviewedAt,
-    elapsedDays,
-    step,
-    lastReview,
+    elapsed,
+    interval,
+    phaseBefore,
+    stepBefore,
+    dueBefore,
+    memoryBefore,
+    lastReviewBefore,
+    repsBefore,
+    lapsesBefore,
   );
 
   @override
-  String toString() {
-    return 'FsrsReviewLog(rating: $rating, state: $state, due: $due, '
-        'step: $step, stability: $stability, difficulty: $difficulty, '
-        'interval: $interval, reviewedAt: $reviewedAt, '
-        'elapsedDays: $elapsedDays, lastReview: $lastReview)';
-  }
+  String toString() =>
+      'FsrsReviewLog(cardId: $cardId, rating: ${rating?.name}, '
+      'reviewedAt: $reviewedAt, elapsed: $elapsed, interval: $interval, '
+      'before: ${phaseBefore?.name ?? 'new'})';
 }

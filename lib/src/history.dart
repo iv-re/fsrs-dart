@@ -1,84 +1,88 @@
 import 'package:fsrs_dart/src/card.dart';
-import 'package:fsrs_dart/src/card_state.dart';
+import 'package:fsrs_dart/src/memory_state.dart';
 import 'package:fsrs_dart/src/rating.dart';
-import 'package:fsrs_dart/src/scheduling_result.dart';
 import 'package:meta/meta.dart';
 
-/// A historical review entry used for replaying scheduling in `reschedule`.
 @immutable
-final class const FsrsHistoryEntry({
-  /// Timestamp when the review took place.
-  required final DateTime review,
+sealed class FsrsHistoryEntry {
+  const FsrsHistoryEntry();
 
-  /// Performance rating selected during the review.
-  required final FsrsRating rating,
+  factory FsrsHistoryEntry.review(DateTime at, FsrsRating rating) =
+      FsrsHistoryReview;
 
-  /// Optional card state override (for manual rating).
-  final FsrsCardState? state,
+  /// [phase] and [memory] override the card's phase and memory state. A new
+  /// card becomes active only when both are given.
+  factory FsrsHistoryEntry.manual(
+    DateTime at, {
+    required DateTime due,
+    FsrsPhase? phase,
+    FsrsMemoryState? memory,
+  }) = FsrsHistoryManual;
 
-  /// Optional next due date override (for manual rating).
-  final DateTime? due,
+  /// UTC.
+  DateTime get at;
+}
 
-  /// Optional stability override (for manual rating).
-  final double? stability,
+final class FsrsHistoryReview extends FsrsHistoryEntry {
+  FsrsHistoryReview(DateTime at, this.rating) : at = at.toUtc();
 
-  /// Optional difficulty override (for manual rating).
-  final double? difficulty,
-}) {
+  @override
+  final DateTime at;
+
+  final FsrsRating rating;
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is FsrsHistoryEntry &&
-          runtimeType == other.runtimeType &&
-          review == other.review &&
-          rating == other.rating &&
-          state == other.state &&
-          due == other.due &&
-          stability == other.stability &&
-          difficulty == other.difficulty;
+      other is FsrsHistoryReview && at == other.at && rating == other.rating;
 
   @override
-  int get hashCode => Object.hash(
-    review,
-    rating,
-    state,
-    due,
-    stability,
-    difficulty,
-  );
+  int get hashCode => Object.hash(at, rating);
 
   @override
-  String toString() => 'FsrsHistoryEntry(review: $review, rating: $rating)';
+  String toString() => 'FsrsHistoryReview($at, ${rating.name})';
 }
 
-/// The result of rescheduling a card from its review history.
-@immutable
-final class const FsrsRescheduleResult({
-  /// Collection of scheduling outcomes generated during the replay.
-  required final List<FsrsRecordLogItem> collections,
-
-  /// The final rescheduled card state.
-  required final FsrsCard card,
-}) {
-  @override
-  bool operator ==(Object other) {
-    if (identical(this, other)) return true;
-    if (other is! FsrsRescheduleResult || runtimeType != other.runtimeType) {
-      return false;
+final class FsrsHistoryManual extends FsrsHistoryEntry {
+  /// Throws [ArgumentError] if [due] is before [at].
+  FsrsHistoryManual(
+    DateTime at, {
+    required DateTime due,
+    this.phase,
+    this.memory,
+  }) : at = at.toUtc(),
+       due = due.toUtc() {
+    if (this.due.isBefore(this.at)) {
+      throw ArgumentError.value(due, 'due', 'must not be before at');
     }
-    if (card != other.card || collections.length != other.collections.length) {
-      return false;
-    }
-    for (var i = 0; i < collections.length; i++) {
-      if (collections[i] != other.collections[i]) return false;
-    }
-    return true;
   }
 
   @override
-  int get hashCode => Object.hash(card, Object.hashAll(collections));
+  final DateTime at;
+
+  /// UTC.
+  final DateTime due;
+
+  /// `null` keeps the current phase.
+  final FsrsPhase? phase;
+
+  /// `null` keeps the current memory state.
+  final FsrsMemoryState? memory;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is FsrsHistoryManual &&
+          at == other.at &&
+          due == other.due &&
+          phase == other.phase &&
+          memory == other.memory;
+
+  @override
+  int get hashCode => Object.hash(at, due, phase, memory);
 
   @override
   String toString() =>
-      'FsrsRescheduleResult(collections: ${collections.length}, card: $card)';
+      'FsrsHistoryManual($at, due: $due, phase: ${phase?.name}, '
+      'memory: $memory)';
 }

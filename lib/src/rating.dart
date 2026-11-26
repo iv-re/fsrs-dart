@@ -1,18 +1,18 @@
-/// Performance rating given during a review.
 enum const FsrsRating(final int value) {
-  /// Manual override or administrative action (not a standard review grade).
-  manual(0),
+  /// The card was forgotten.
   again(1),
-  hard(2),
-  good(3),
-  easy(4);
 
-  /// Whether this rating represents an active review grade.
-  bool get isGrade => this != manual;
+  /// Recalled with serious difficulty.
+  hard(2),
+
+  /// Recalled after some hesitation.
+  good(3),
+
+  /// Recalled effortlessly.
+  easy(4);
 
   static FsrsRating fromValue(int value) {
     return switch (value) {
-      0 => .manual,
       1 => .again,
       2 => .hard,
       3 => .good,
@@ -20,7 +20,7 @@ enum const FsrsRating(final int value) {
       _ => throw ArgumentError.value(
         value,
         'value',
-        'Rating value must be between 0 and 4',
+        'Rating value must be between 1 and 4',
       ),
     };
   }
